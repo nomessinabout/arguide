@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Museum AR Guide - The Fox Story</title>
+    <!-- Tailwind CSS for modern mobile UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- A-Frame VR/AR Library -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <!-- AR.js for Marker-based Augmented Reality -->
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <!-- A-Frame Extras for glTF Animation Mixer support -->
+    <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
+        .ar-ui-overlay { pointer-events: none; }
+        .ar-interactive { pointer-events: auto; }
+    </style>
+</head>
+<body class="bg-black text-white">
+
+    <!-- AR Scene Container -->
+    <a-scene 
+        embedded 
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+        renderer="logarithmicDepthBuffer: true; antialias: true;"
+        vr-mode-ui="enabled: false">
+
+        <!-- Asset Management -->
+        <a-assets>
+            <a-asset-item id="foxModel" src="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb"></a-asset-item>
+        </a-assets>
+
+        <!-- Light Source for 3D model realism -->
+        <a-light type="ambient" color="#fff" intensity="1.2"></a-light>
+        <a-light type="directional" position="2 4 2" intensity="0.8"></a-light>
+
+        <!-- Marker Tracking (Hiro Marker) -->
+        <a-marker id="ar-marker" preset="hiro" smooth="true" smoothCount="5" smoothTolerance="0.01" smoothThreshold="5">
+        </a-marker>
+
+        <!-- Keep the fox outside the marker so tracking loss cannot hide it. -->
+        <a-entity 
+            id="fox-entity"
+            gltf-model="#foxModel" 
+            scale="0.02 0.02 0.02" 
+            position="0 0 0" 
+            rotation="0 0 0"
+            visible="false"
+            animation-mixer="clip: Survey; timeScale: 1;">
+        </a-entity>
+
+        <!-- Camera Entity -->
+        <a-entity camera></a-entity>
+    </a-scene>
+
+    <!-- UI Overlay Layer -->
+    <div id="ui-container" class="absolute inset-0 flex flex-col justify-between p-4 ar-ui-overlay z-50">
+        
+        <!-- Top Status Bar -->
+        <div class="flex justify-between items-center bg-black/50 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 ar-interactive">
+            <div class="flex items-center space-x-2">
+                <span id="connection-indicator" class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="status-text" class="text-xs font-medium uppercase tracking-wider text-gray-200">Point camera at Hiro marker</span>
+            </div>
+            <span class="text-xs text-purple-400 font-bold">Museum AR Guide</span>
+        </div>
+
+        <!-- Bottom Dialogue & Choice Panel -->
+        <div class="space-y-3 mb-2">
+            <!-- Dialogue Box -->
+            <div id="dialogue-box" class="bg-gray-900/90 backdrop-blur-xl border border-white/20 rounded-2xl p-4 shadow-2xl ar-interactive transition-all duration-300 transform translate-y-10 opacity-0">
+                <div class="flex items-center space-x-2 mb-1">
+                    <span class="text-xs font-bold text-amber-400 uppercase tracking-widest">Guide Fox</span>
+                </div>
+                <p id="dialogue-text" class="text-sm md:text-base text-gray-100 leading-relaxed mb-3">
+                    Looking for the marker...
+                </p>
+                <!-- Dynamic Options Container -->
+                <div id="options-container" class="grid grid-cols-1 gap-2">
+                    <!-- Buttons injected dynamically -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Application Script Logic -->
+    <script>
+        // --- STORY GRAPH CONFIGURATION (Modular & Extensible) ---
+        const storyGraph = {
+            start: {
+                text: "Hello there, traveler! Welcome to our Digital Art & History Museum. I'm your official curator guide.",
+                animation: "Survey",
+                timeScale: 1,
+                options: [
+                    { label: "Hi! Let's get started.", next: "ask_ticket" }
+                ]
+            },
+            ask_ticket: {
+                text: "Wonderful! Before we step inside the main exhibition halls, tell me: have you already purchased your entry ticket?",
+                animation: "Walk",
+                timeScale: 0.8,
+                options: [
+                    { label: "Yes, I have a ticket!", next: "ticket_yes" },
+                    { label: "No, where do I buy one?", next: "ticket_no" }
+                ]
+            },
+            ticket_yes: {
+                text: "Fantastic! Please follow me closely. Head straight through that grand oak door ahead, take a sharp left down the corridor, and enjoy the gallery!",
+                animation: "Run",
+                timeScale: 1.2,
+                options: [
+                    { label: "🔄 Restart Tour Guide", next: "start" }
+                ]
+            },
+            ticket_no: {
+                text: "No worries at all! Standard adult entry is $15, students & seniors are $10, and children under 12 enter free. You can grab your ticket at the front desk kiosk just around the lobby corner.",
+                animation: "Survey",
+                timeScale: 1,
+                options: [
+                    { label: "Got it, thanks!", next: "ticket_yes" },
+                    { label: "🔄 Restart Tour Guide", next: "start" }
+                ]
+            }
+        };
+
+        // --- APPLICATION STATE ---
+        let currentSceneKey = 'start';
+        let storyStarted = false;
+        let markerVisible = false;
+
+        // DOM Elements
+        const statusText = document.getElementById('status-text');
+        const connectionIndicator = document.getElementById('connection-indicator');
+        const dialogueBox = document.getElementById('dialogue-box');
+        const dialogueText = document.getElementById('dialogue-text');
+        const optionsContainer = document.getElementById('options-container');
+        const markerEl = document.getElementById('ar-marker');
+        const foxEntity = document.getElementById('fox-entity');
+
+        AFRAME.registerComponent('follow-marker-pose', {
+            init() {
+                this.position = new THREE.Vector3();
+                this.quaternion = new THREE.Quaternion();
+                this.scale = new THREE.Vector3();
+            },
+            tick() {
+                if (!markerVisible) return;
+
+                const markerObject = markerEl.object3D;
+                const foxObject = foxEntity.object3D;
+                markerObject.updateMatrixWorld(true);
+                markerObject.getWorldPosition(this.position);
+                markerObject.getWorldQuaternion(this.quaternion);
+                markerObject.getWorldScale(this.scale);
+
+                foxObject.position.copy(this.position);
+                foxObject.quaternion.copy(this.quaternion);
+                foxObject.scale.copy(this.scale).multiplyScalar(0.02);
+                foxObject.visible = true;
+                foxObject.updateMatrixWorld(true);
+            }
+        });
+        document.querySelector('a-scene').setAttribute('follow-marker-pose', '');
+
+        // --- EVENT LISTENERS FOR MARKER TRACKING ---
+        markerEl.addEventListener('markerFound', () => {
+            markerVisible = true;
+            connectionIndicator.className = 'w-3 h-3 rounded-full bg-emerald-500';
+            statusText.textContent = 'Marker detected - Connected';
+            
+            // Show dialogue box smoothly on first appearance
+            if (!storyStarted) {
+                storyStarted = true;
+                loadScene('start');
+            } else {
+                dialogueBox.classList.remove('translate-y-10', 'opacity-0');
+            }
+        });
+
+        markerEl.addEventListener('markerLost', () => {
+            markerVisible = false;
+            connectionIndicator.className = 'w-3 h-3 rounded-full bg-amber-500 animate-pulse';
+            statusText.textContent = 'Marker lost - Fox holding position';
+            
+            // Optional: You can hide dialogue on loss if you prefer, or keep it visible so users can click choices.
+            // Keeping visible ensures the user can interact even if tracking briefly flickers.
+        });
+
+        // --- STORY ENGINE CONTROLLER ---
+        function loadScene(sceneKey) {
+            const sceneData = storyGraph[sceneKey];
+            if (!sceneData) return;
+
+            currentSceneKey = sceneKey;
+
+            // Fade out slightly or update text content
+            dialogueText.style.opacity = '0';
+            setTimeout(() => {
+                dialogueText.textContent = sceneData.text;
+                dialogueText.style.opacity = '1';
+            }, 150);
+
+            // Update Fox Animation via A-Frame Component attributes
+            if (foxEntity) {
+                foxEntity.setAttribute('animation-mixer', `clip: ${sceneData.animation}; timeScale: ${sceneData.timeScale};`);
+            }
+
+            // Render Dynamic Option Buttons
+            optionsContainer.innerHTML = '';
+            sceneData.options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-semibold text-sm rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center space-x-2 ar-interactive';
+                btn.textContent = opt.label;
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    loadScene(opt.next);
+                };
+                optionsContainer.appendChild(btn);
+            });
+
+            // Reveal Dialogue Box with animation
+            dialogueBox.classList.remove('translate-y-10', 'opacity-0');
+        }
+
+        // Initialize UI display state on load
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                // Pre-load prompt reminder
+                statusText.textContent = 'Awaiting Hiro Marker...';
+            }, 500);
+        });
+    </script>
+</body>
+</html>
