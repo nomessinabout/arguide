@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Museum AR Guide - The Fox Story</title>
     <!-- Tailwind CSS for modern mobile UI -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -13,92 +13,114 @@
     <!-- A-Frame Extras for glTF Animation Mixer support -->
     <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
     <style>
-        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: system-ui, -apple-system, sans-serif; 
+            background-color: #0b0f19;
         }
-        a-scene {
-            position: fixed !important;
-            inset: 0;
-            width: 100vw !important;
-            height: 100vh !important;
-            height: 100dvh !important;
-            z-index: 1 !important;
-        }
-        #arjs-video {
-            z-index: 0 !important;
-        }
-        #ui-container {
-            position: fixed !important;
-            inset: 0;
-            z-index: 10000 !important;
-        }
-        #status-bar {
-            position: fixed;
-            top: calc(env(safe-area-inset-top) + 1rem);
+        .a-enter-vr { display: none !important; }
+        
+        /* Viewfinder window framing both camera feed and 3D AR scene */
+        #ar-viewport {
+            position: absolute;
+            top: 5rem;
+            bottom: 13rem;
             left: 1rem;
             right: 1rem;
-            background: rgba(0, 0, 0, 0.85);
+            border-radius: 1.5rem;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.7);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            background: #000;
         }
+        
+        /* Ensure relocated AR.js video stays perfectly framed inside the rectangle */
+        #ar-viewport video {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            object-fit: contain !important;
+            object-position: center center !important;
+            z-index: 0 !important;
+        }
+
+        /* Ensure A-Frame canvas sits cleanly on top of the contained video */
+        #ar-viewport .a-canvas {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            z-index: 1 !important;
+        }
+
         .ar-ui-overlay { pointer-events: none; }
         .ar-interactive { pointer-events: auto; }
     </style>
 </head>
-<body class="bg-black text-white">
+<body class="text-white h-screen w-screen flex flex-col justify-between select-none">
 
-    <!-- AR Scene Container -->
-    <a-scene 
-        embedded 
-        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
-        renderer="logarithmicDepthBuffer: true; antialias: true;"
-        vr-mode-ui="enabled: false">
+    <!-- Padded Viewfinder Container (Camera Feed + AR Scene are both constrained inside here) -->
+    <div id="ar-viewport">
+        <a-scene 
+            embedded 
+            arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+            renderer="colorManagement: true; logarithmicDepthBuffer: true; antialias: true; alpha: true;"
+            vr-mode-ui="enabled: false">
 
-        <!-- Asset Management -->
-        <a-assets timeout="1000">
-            <a-asset-item id="foxModel" src="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb"></a-asset-item>
-        </a-assets>
+            <!-- Asset Management -->
+            <a-assets>
+                <a-asset-item id="foxModel" src="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb"></a-asset-item>
+            </a-assets>
 
-        <!-- Light Source for 3D model realism -->
-        <a-light type="ambient" color="#fff" intensity="1.2"></a-light>
-        <a-light type="directional" position="2 4 2" intensity="0.8"></a-light>
+            <!-- Enhanced Lighting for PBR Textures -->
+            <a-light type="ambient" color="#ffffff" intensity="2.0"></a-light>
+            <a-light type="directional" color="#ffffff" intensity="1.5" position="2 4 2"></a-light>
+            <a-light type="directional" color="#ffffff" intensity="0.8" position="-2 -2 -1"></a-light>
 
-        <!-- The fox follows the marker and is hidden automatically when tracking is lost. -->
-        <a-marker id="ar-marker" preset="hiro" smooth="true" smoothCount="5" smoothTolerance="0.01" smoothThreshold="5">
-            <a-entity 
-                id="fox-entity"
-                gltf-model="#foxModel" 
-                scale="0.02 0.02 0.02" 
-                position="0 0 0" 
-                rotation="0 0 0"
-                animation-mixer="clip: Survey; timeScale: 1;">
-            </a-entity>
-        </a-marker>
+            <!-- Marker Tracking (Hiro Marker) -->
+            <a-marker id="ar-marker" preset="hiro" smooth="true" smoothCount="5" smoothTolerance="0.01" smoothThreshold="5">
+                <!-- 3D Animated Fox Entity -->
+                <a-entity 
+                    id="fox-entity"
+                    gltf-model="#foxModel" 
+                    scale="0.02 0.02 0.02" 
+                    position="0 0 0" 
+                    rotation="0 0 0"
+                    animation-mixer="clip: Survey; timeScale: 1;">
+                </a-entity>
+            </a-marker>
 
-        <!-- Camera Entity -->
-        <a-entity camera></a-entity>
-    </a-scene>
+            <!-- Camera Entity -->
+            <a-entity camera></a-entity>
+        </a-scene>
+    </div>
 
     <!-- UI Overlay Layer -->
-    <div id="ui-container" class="flex flex-col justify-between p-4 ar-ui-overlay z-50">
+    <div id="ui-container" class="absolute inset-0 flex flex-col justify-between p-4 ar-ui-overlay z-50">
         
         <!-- Top Status Bar -->
-        <div id="status-bar" class="flex justify-between items-center backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 ar-interactive">
-            <div class="flex items-center space-x-2">
-                <span id="connection-indicator" class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></span>
-                <span id="status-text" class="text-xs font-medium uppercase tracking-wider text-gray-200">Starting rear camera...</span>
+        <div class="flex justify-between items-center bg-gray-900/85 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/10 ar-interactive shadow-lg">
+            <div class="flex items-center space-x-2.5">
+                <span id="connection-indicator" class="w-3.5 h-3.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="status-text" class="text-xs font-semibold uppercase tracking-wider text-gray-200">Point at Hiro Marker</span>
             </div>
-            <span class="text-xs text-purple-400 font-bold">Museum AR Guide</span>
+            <span class="text-xs text-purple-400 font-bold tracking-wide">Museum AR Guide</span>
         </div>
 
         <!-- Bottom Dialogue & Choice Panel -->
-        <div class="space-y-3 mb-2">
+        <div class="space-y-3 mb-1">
             <!-- Dialogue Box -->
             <div id="dialogue-box" class="bg-gray-900/90 backdrop-blur-xl border border-white/20 rounded-2xl p-4 shadow-2xl ar-interactive transition-all duration-300 transform translate-y-10 opacity-0">
                 <div class="flex items-center space-x-2 mb-1">
                     <span class="text-xs font-bold text-amber-400 uppercase tracking-widest">Guide Fox</span>
                 </div>
                 <p id="dialogue-text" class="text-sm md:text-base text-gray-100 leading-relaxed mb-3">
-                    Looking for the marker...
+                    Looking for the marker inside the frame...
                 </p>
                 <!-- Dynamic Options Container -->
                 <div id="options-container" class="grid grid-cols-1 gap-2">
@@ -111,6 +133,20 @@
 
     <!-- Application Script Logic -->
     <script>
+        // --- REPOSITION AR.JS WEBCAM VIDEO INTO THE VIEWPORT RECTANGLE ---
+        window.addEventListener('DOMContentLoaded', () => {
+            const viewport = document.getElementById('ar-viewport');
+            
+            // AR.js generates the video element dynamically. Observe body additions to catch and move it.
+            const observer = new MutationObserver((mutations) => {
+                const videoEl = document.querySelector('body > video');
+                if (videoEl && videoEl.parentNode !== viewport) {
+                    viewport.insertBefore(videoEl, viewport.firstChild);
+                }
+            });
+            observer.observe(document.body, { childList: true });
+        });
+
         // --- STORY GRAPH CONFIGURATION (Modular & Extensible) ---
         const storyGraph = {
             start: {
@@ -150,9 +186,10 @@
         };
 
         // --- APPLICATION STATE ---
+        let currentSceneKey = 'start';
         let storyStarted = false;
+        let markerVisible = false;
 
-        // DOM Elements
         const statusText = document.getElementById('status-text');
         const connectionIndicator = document.getElementById('connection-indicator');
         const dialogueBox = document.getElementById('dialogue-box');
@@ -161,40 +198,12 @@
         const markerEl = document.getElementById('ar-marker');
         const foxEntity = document.getElementById('fox-entity');
 
-        let resizeTimer;
-        function refreshARLayout() {
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(() => {
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        window.dispatchEvent(new Event('resize'));
-                    });
-                });
-            }, 150);
-        }
-
-        window.addEventListener('arjs-video-loaded', refreshARLayout);
-        window.addEventListener('orientationchange', refreshARLayout);
-        window.visualViewport?.addEventListener('resize', refreshARLayout);
-
-        window.addEventListener('camera-init', () => {
-            connectionIndicator.className = 'w-3 h-3 rounded-full bg-amber-500 animate-pulse';
-            statusText.textContent = 'Awaiting Hiro Marker...';
-            refreshARLayout();
-        });
-
-        window.addEventListener('camera-error', (event) => {
-            console.error('Camera initialization failed:', event.error);
-            connectionIndicator.className = 'w-3 h-3 rounded-full bg-red-500';
-            statusText.textContent = 'Camera unavailable - allow camera access and reload';
-        });
-
         // --- EVENT LISTENERS FOR MARKER TRACKING ---
         markerEl.addEventListener('markerFound', () => {
-            connectionIndicator.className = 'w-3 h-3 rounded-full bg-emerald-500';
+            markerVisible = true;
+            connectionIndicator.className = 'w-3.5 h-3.5 rounded-full bg-emerald-500';
             statusText.textContent = 'Marker detected - Connected';
             
-            // Show dialogue box smoothly on first appearance
             if (!storyStarted) {
                 storyStarted = true;
                 loadScene('start');
@@ -204,11 +213,9 @@
         });
 
         markerEl.addEventListener('markerLost', () => {
-            connectionIndicator.className = 'w-3 h-3 rounded-full bg-amber-500 animate-pulse';
-            statusText.textContent = 'Marker lost - Story continues';
-            
-            // Optional: You can hide dialogue on loss if you prefer, or keep it visible so users can click choices.
-            // Keeping visible ensures the user can interact even if tracking briefly flickers.
+            markerVisible = false;
+            connectionIndicator.className = 'w-3.5 h-3.5 rounded-full bg-amber-500 animate-pulse';
+            statusText.textContent = 'Marker lost - Fox holding position';
         });
 
         // --- STORY ENGINE CONTROLLER ---
@@ -216,19 +223,18 @@
             const sceneData = storyGraph[sceneKey];
             if (!sceneData) return;
 
-            // Fade out slightly or update text content
+            currentSceneKey = sceneKey;
+
             dialogueText.style.opacity = '0';
             setTimeout(() => {
                 dialogueText.textContent = sceneData.text;
                 dialogueText.style.opacity = '1';
             }, 150);
 
-            // Update Fox Animation via A-Frame Component attributes
             if (foxEntity) {
                 foxEntity.setAttribute('animation-mixer', `clip: ${sceneData.animation}; timeScale: ${sceneData.timeScale};`);
             }
 
-            // Render Dynamic Option Buttons
             optionsContainer.innerHTML = '';
             sceneData.options.forEach(opt => {
                 const btn = document.createElement('button');
@@ -241,10 +247,8 @@
                 optionsContainer.appendChild(btn);
             });
 
-            // Reveal Dialogue Box with animation
             dialogueBox.classList.remove('translate-y-10', 'opacity-0');
         }
-
     </script>
 </body>
 </html>
