@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Museum AR Guide - The Fox Story</title>
     <!-- Tailwind CSS for modern mobile UI -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -13,7 +13,38 @@
     <!-- A-Frame Extras for glTF Animation Mixer support -->
     <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+        body {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        a-scene {
+            position: fixed !important;
+            inset: 0;
+            width: 100vw !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            z-index: 1 !important;
+        }
+        #arjs-video {
+            z-index: 0 !important;
+        }
+        #ui-container {
+            position: fixed !important;
+            inset: 0;
+            z-index: 10000 !important;
+        }
+        #status-bar {
+            position: fixed;
+            top: calc(env(safe-area-inset-top) + 1rem);
+            left: 1rem;
+            right: 1rem;
+            background: rgba(0, 0, 0, 0.85);
+        }
         .ar-ui-overlay { pointer-events: none; }
         .ar-interactive { pointer-events: auto; }
     </style>
@@ -28,7 +59,7 @@
         vr-mode-ui="enabled: false">
 
         <!-- Asset Management -->
-        <a-assets>
+        <a-assets timeout="1000">
             <a-asset-item id="foxModel" src="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb"></a-asset-item>
         </a-assets>
 
@@ -36,33 +67,30 @@
         <a-light type="ambient" color="#fff" intensity="1.2"></a-light>
         <a-light type="directional" position="2 4 2" intensity="0.8"></a-light>
 
-        <!-- Marker Tracking (Hiro Marker) -->
+        <!-- The fox follows the marker and is hidden automatically when tracking is lost. -->
         <a-marker id="ar-marker" preset="hiro" smooth="true" smoothCount="5" smoothTolerance="0.01" smoothThreshold="5">
+            <a-entity 
+                id="fox-entity"
+                gltf-model="#foxModel" 
+                scale="0.02 0.02 0.02" 
+                position="0 0 0" 
+                rotation="0 0 0"
+                animation-mixer="clip: Survey; timeScale: 1;">
+            </a-entity>
         </a-marker>
-
-        <!-- Keep the fox outside the marker so tracking loss cannot hide it. -->
-        <a-entity 
-            id="fox-entity"
-            gltf-model="#foxModel" 
-            scale="0.02 0.02 0.02" 
-            position="0 0 0" 
-            rotation="0 0 0"
-            visible="false"
-            animation-mixer="clip: Survey; timeScale: 1;">
-        </a-entity>
 
         <!-- Camera Entity -->
         <a-entity camera></a-entity>
     </a-scene>
 
     <!-- UI Overlay Layer -->
-    <div id="ui-container" class="absolute inset-0 flex flex-col justify-between p-4 ar-ui-overlay z-50">
+    <div id="ui-container" class="flex flex-col justify-between p-4 ar-ui-overlay z-50">
         
         <!-- Top Status Bar -->
-        <div class="flex justify-between items-center bg-black/50 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 ar-interactive">
+        <div id="status-bar" class="flex justify-between items-center backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 ar-interactive">
             <div class="flex items-center space-x-2">
                 <span id="connection-indicator" class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></span>
-                <span id="status-text" class="text-xs font-medium uppercase tracking-wider text-gray-200">Point camera at Hiro marker</span>
+                <span id="status-text" class="text-xs font-medium uppercase tracking-wider text-gray-200">Starting rear camera...</span>
             </div>
             <span class="text-xs text-purple-400 font-bold">Museum AR Guide</span>
         </div>
@@ -127,9 +155,7 @@
         };
 
         // --- APPLICATION STATE ---
-        let currentSceneKey = 'start';
         let storyStarted = false;
-        let markerVisible = false;
 
         // DOM Elements
         const statusText = document.getElementById('status-text');
@@ -140,34 +166,19 @@
         const markerEl = document.getElementById('ar-marker');
         const foxEntity = document.getElementById('fox-entity');
 
-        AFRAME.registerComponent('follow-marker-pose', {
-            init() {
-                this.position = new THREE.Vector3();
-                this.quaternion = new THREE.Quaternion();
-                this.scale = new THREE.Vector3();
-            },
-            tick() {
-                if (!markerVisible) return;
-
-                const markerObject = markerEl.object3D;
-                const foxObject = foxEntity.object3D;
-                markerObject.updateMatrixWorld(true);
-                markerObject.getWorldPosition(this.position);
-                markerObject.getWorldQuaternion(this.quaternion);
-                markerObject.getWorldScale(this.scale);
-
-                foxObject.position.copy(this.position);
-                foxObject.quaternion.copy(this.quaternion);
-                foxObject.scale.copy(this.scale).multiplyScalar(0.02);
-                foxObject.visible = true;
-                foxObject.updateMatrixWorld(true);
-            }
+        window.addEventListener('camera-init', () => {
+            connectionIndicator.className = 'w-3 h-3 rounded-full bg-amber-500 animate-pulse';
+            statusText.textContent = 'Awaiting Hiro Marker...';
         });
-        document.querySelector('a-scene').setAttribute('follow-marker-pose', '');
+
+        window.addEventListener('camera-error', (event) => {
+            console.error('Camera initialization failed:', event.error);
+            connectionIndicator.className = 'w-3 h-3 rounded-full bg-red-500';
+            statusText.textContent = 'Camera unavailable - allow camera access and reload';
+        });
 
         // --- EVENT LISTENERS FOR MARKER TRACKING ---
         markerEl.addEventListener('markerFound', () => {
-            markerVisible = true;
             connectionIndicator.className = 'w-3 h-3 rounded-full bg-emerald-500';
             statusText.textContent = 'Marker detected - Connected';
             
@@ -181,9 +192,8 @@
         });
 
         markerEl.addEventListener('markerLost', () => {
-            markerVisible = false;
             connectionIndicator.className = 'w-3 h-3 rounded-full bg-amber-500 animate-pulse';
-            statusText.textContent = 'Marker lost - Fox holding position';
+            statusText.textContent = 'Marker lost - Story continues';
             
             // Optional: You can hide dialogue on loss if you prefer, or keep it visible so users can click choices.
             // Keeping visible ensures the user can interact even if tracking briefly flickers.
@@ -193,8 +203,6 @@
         function loadScene(sceneKey) {
             const sceneData = storyGraph[sceneKey];
             if (!sceneData) return;
-
-            currentSceneKey = sceneKey;
 
             // Fade out slightly or update text content
             dialogueText.style.opacity = '0';
@@ -225,13 +233,6 @@
             dialogueBox.classList.remove('translate-y-10', 'opacity-0');
         }
 
-        // Initialize UI display state on load
-        window.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-                // Pre-load prompt reminder
-                statusText.textContent = 'Awaiting Hiro Marker...';
-            }, 500);
-        });
     </script>
 </body>
 </html>
